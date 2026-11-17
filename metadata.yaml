@@ -1,0 +1,15 @@
+﻿name: astrbot_plugin_mcsm
+display_name: MCSManager 实例控制
+short_desc: 将 MCSManager 实例、控制台与文件操作接入 AstrBot Tools，并按群会话授权
+desc: >-
+  连接 MCSManager 面板，自动发现当前 API Key 可操作的实例，提供可视化蓝图授权、
+  实例权限控制，以及控制台、命令、启停、文件管理、上传下载等 LLM Tools。
+version: 0.1.0
+author: z1216
+astrbot_version: ">=4.29.0"
+tags:
+  - MCSManager
+  - Minecraft
+  - 运维
+  - WebUI
+  - Tool

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MCSManager</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M4 6.5 12 2l8 4.5v11L12 22l-8-4.5v-11Z" stroke="currentColor" stroke-width="1.6"/>
+              <path d="m4.5 6.7 7.5 4.2 7.5-4.2M12 11v10.4" stroke="currentColor" stroke-width="1.6"/>
+              <path d="m8.2 9.1 7.7-4.3" stroke="currentColor" stroke-width="1.6" opacity=".55"/>
+            </svg>
+          </div>
+          <div>
+            <h1>MCSManager</h1>
+            <p id="accountLine" class="muted">正在读取连接状态…</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span id="connectionPill" class="pill neutral"><span class="pill-dot"></span>未检测</span>
+          <button id="refreshBtn" class="icon-button" title="重新读取" aria-label="重新读取">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M20 11a8 8 0 1 0-2.34 5.66" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M20 4v7h-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="插件页面">
+        <button class="tab active" data-tab="blueprint" type="button">
+          <span>蓝图</span>
+        </button>
+        <button class="tab" data-tab="settings" type="button">
+          <span>设置</span>
+        </button>
+      </nav>
+
+      <div id="notice" class="notice hidden" role="status"></div>
+
+      <main>
+        <section id="blueprintPanel" class="tab-panel active">
+          <div class="blueprint-grid">
+            <section class="panel instances-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">AVAILABLE INSTANCES</p>
+                  <h2>可操作实例</h2>
+                </div>
+                <span id="instanceCount" class="counter">0</span>
+              </div>
+              <p class="panel-desc">拖动实例到右侧激活区域即可授权给当前会话。点击齿轮调整该实例允许机器人执行的能力。</p>
+              <div id="instanceList" class="instance-list" aria-live="polite"></div>
+            </section>
+
+            <section class="panel session-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">SESSION BINDING</p>
+                  <h2>会话授权</h2>
+                </div>
+              </div>
+
+              <div class="field-block">
+                <label class="field-label" for="sessionTrigger">选择群 / SID</label>
+                <div id="sessionCombobox" class="combobox">
+                  <button id="sessionTrigger" class="combobox-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span id="sessionTriggerText" class="combobox-value">请选择会话</span>
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="m7 10 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div id="sessionDropdown" class="combobox-dropdown hidden">
+                    <div class="combobox-search-wrap">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/>
+                        <path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                      </svg>
+                      <input id="sessionSearch" type="search" placeholder="搜索群名或 SID…" autocomplete="off" />
+                    </div>
+                    <div id="sessionOptions" class="combobox-options" role="listbox"></div>
+                  </div>
+                </div>
+                <p class="field-hint">名称与 SID 自动来自 AstrBot 会话记录及白名单 ID 列表；已绑定的群会优先显示。</p>
+              </div>
+
+              <div id="sessionMeta" class="session-meta empty">尚未选择会话</div>
+
+              <div id="dropZone" class="drop-zone disabled" tabindex="0" role="button" aria-label="实例激活区域">
+                <div class="drop-visual" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M12 4v11m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M5 17.5V20h14v-2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3>激活区域</h3>
+                  <p>将左侧实例拖到这里，授权给当前所选会话。</p>
+                </div>
+              </div>
+
+              <div class="activation-heading">
+                <h3>已授权实例</h3>
+                <span id="boundCount" class="counter subtle">0</span>
+              </div>
+              <div id="boundList" class="bound-list" aria-live="polite"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="settingsPanel" class="tab-panel">
+          <div class="settings-wrap">
+            <section class="panel settings-card">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">CONNECTION</p>
+                  <h2>MCSManager 连接</h2>
+                </div>
+                <span class="settings-orbit" aria-hidden="true"></span>
+              </div>
+              <p class="panel-desc">插件通过 API Key 继承 MCSManager 账号权限。普通账号只会读取到已分配给它的实例。</p>
+
+              <div class="settings-form">
+                <label class="field-block">
+                  <span class="field-label">Base URL</span>
+                  <input id="baseUrlInput" type="url" placeholder="https://mcsm.example.com" autocomplete="off" spellcheck="false" />
+                  <span class="field-hint">填写面板根地址，不要包含 <code>/api</code>。</span>
+                </label>
+
+                <label class="field-block">
+                  <span class="field-label">API Key</span>
+                  <div class="secret-row">
+                    <div class="secret-input">
+                      <input id="apiKeyInput" type="password" placeholder="留空则保留已保存的 API Key" autocomplete="new-password" spellcheck="false" />
+                      <button id="toggleApiKey" class="inside-button" type="button" title="显示或隐藏" aria-label="显示或隐藏 API Key">
+                        <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M2.8 12s3.2-5.2 9.2-5.2 9.2 5.2 9.2 5.2-3.2 5.2-9.2 5.2S2.8 12 2.8 12Z" stroke="currentColor" stroke-width="1.7"/>
+                          <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.7"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <button id="testBtn" class="test-button" type="button" title="测试连接" aria-label="测试连接">
+                      <svg class="test-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="m14.5 4.5 5 5L9 20H4v-5L14.5 4.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+                        <path d="m12.5 6.5 5 5" stroke="currentColor" stroke-width="1.7"/>
+                      </svg>
+                      <span class="spinner" aria-hidden="true"></span>
+                    </button>
+                  </div>
+                  <span id="testResult" class="field-hint test-result"></span>
+                </label>
+
+                <div class="settings-grid">
+                  <label class="field-block compact">
+                    <span class="field-label">请求超时（秒）</span>
+                    <input id="timeoutInput" type="number" min="5" max="120" step="5" value="20" />
+                  </label>
+                  <label class="toggle-field">
+                    <span>
+                      <span class="field-label">校验 SSL</span>
+                      <span class="field-hint">自签名证书可关闭。</span>
+                    </span>
+                    <input id="verifySslInput" type="checkbox" />
+                    <span class="toggle-ui" aria-hidden="true"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="settings-actions">
+                <span id="settingsStatus" class="settings-status"></span>
+                <button id="saveSettingsBtn" class="primary-button" type="button">保存设置</button>
+              </div>
+            </section>
+
+            <aside class="panel info-card">
+              <p class="eyebrow">HOW IT WORKS</p>
+              <h2>授权模型</h2>
+              <ol class="info-list">
+                <li><span>01</span>设置页保存 Base URL 与 API Key。</li>
+                <li><span>02</span>蓝图页自动发现该 Key 可操作的实例。</li>
+                <li><span>03</span>为具体群授权实例，并单独设置能力。</li>
+                <li><span>04</span>LLM 仅能在该群内操作已授权的实例。</li>
+              </ol>
+              <div class="security-note">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z" stroke="currentColor" stroke-width="1.7"/>
+                  <path d="m9.2 12 1.9 1.9 3.8-4.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p>API Key 只在后端使用，不会回显到前端；所有工具调用都会再次校验会话绑定与实例权限。</p>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="permissionModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="permissionTitle">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-card">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">INSTANCE PERMISSIONS</p>
+            <h2 id="permissionTitle">实例权限</h2>
+            <p id="permissionSubtitle" class="muted"></p>
+          </div>
+          <button class="icon-button small" type="button" data-close-modal aria-label="关闭">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div id="permissionList" class="permission-list"></div>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-modal>取消</button>
+          <button id="savePermissionsBtn" class="primary-button" type="button">保存权限</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

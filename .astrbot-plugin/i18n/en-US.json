@@ -1,0 +1,8 @@
+﻿{
+  "views": {
+    "mcsm": {
+      "title": "MCSManager",
+      "description": "Bind instances to sessions and configure the MCSManager connection."
+    }
+  }
+}

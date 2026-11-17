@@ -1,0 +1,11 @@
+﻿__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.log
+_ref/
+_mcsm-*.html
+api_*.html
+get_apikey.html
+astrbot-*.tar.gz
+astrbot-dev-docs-*.tar.gz

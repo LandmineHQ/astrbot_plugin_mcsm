@@ -1,0 +1,8 @@
+﻿{
+  "views": {
+    "mcsm": {
+      "title": "MCSManager",
+      "description": "实例授权、会话绑定与 MCSManager 连接设置。"
+    }
+  }
+}
