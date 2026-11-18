@@ -66,6 +66,7 @@ class MCSMPlugin(Star):
         data_dir = StarTools.get_data_dir(PLUGIN_NAME)
         self._data_dir = data_dir
         self._command_output_dir = data_dir / "command_outputs"
+        self._terminal_locks: dict[str, asyncio.Lock] = {}
         self._state_store = PluginStateStore(data_dir / "state.json")
         self._client = self._make_client()
         self._register_web_apis()
@@ -730,6 +731,13 @@ class MCSMPlugin(Star):
             "console": tail,
         }
 
+    def _terminal_lock_for(self, instance_key_value: str) -> asyncio.Lock:
+        lock = self._terminal_locks.get(instance_key_value)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._terminal_locks[instance_key_value] = lock
+        return lock
+
     async def _tool_send_command(
         self,
         event: AstrMessageEvent,
@@ -764,6 +772,23 @@ class MCSMPlugin(Star):
             raise ValueError("command 不能为空。")
         if len(command_text) > 8000:
             raise ValueError("命令过长，最多 8000 字符。")
+
+        # A terminal has one input stream. Serialize command writes even when
+        # AstrBot invokes multiple copies of this tool concurrently.
+        async with self._terminal_lock_for(key):
+            return await self._execute_serial_command(
+                event, selected, key, command_text, wait_ms, max_chars
+            )
+
+    async def _execute_serial_command(
+        self,
+        event: AstrMessageEvent,
+        selected: dict[str, Any],
+        key: str,
+        command_text: str,
+        wait_ms: int | float | str,
+        max_chars: int | float | str,
+    ) -> dict[str, Any]:
         daemon_id = str(selected.get("daemonId") or "")
         instance_uuid = str(selected.get("instanceUuid") or "")
         before_text = ""
@@ -1382,12 +1407,21 @@ class MCSMPlugin(Star):
                     event, instance, permission
                 )
 
-        response = await self._client.request_panel(
-            method,
-            api_path,
-            params=params,
-            body=payload,
-        )
+        if api_path == "/api/protected_instance/command":
+            async with self._terminal_lock_for(key):
+                response = await self._client.request_panel(
+                    method,
+                    api_path,
+                    params=params,
+                    body=payload,
+                )
+        else:
+            response = await self._client.request_panel(
+                method,
+                api_path,
+                params=params,
+                body=payload,
+            )
         return {
             "ok": True,
             "instance": instance_name,

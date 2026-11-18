@@ -282,8 +282,7 @@ class MCSMClient:
             "uuid": instance_uuid,
             "fileName": file_name,
         }
-        if file_type:
-            params["type"] = file_type
+        params["type"] = file_type or ""
         return await self.request_data(
             "GET", "/api/protected_instance/process_config/file", params=params
         )
@@ -301,8 +300,7 @@ class MCSMClient:
             "uuid": instance_uuid,
             "fileName": file_name,
         }
-        if file_type:
-            params["type"] = file_type
+        params["type"] = file_type or ""
         return await self.request_data(
             "PUT",
             "/api/protected_instance/process_config/file",
@@ -326,8 +324,10 @@ class MCSMClient:
             "page": max(0, page),
             "page_size": max(1, min(page_size, 100)),
         }
-        if file_name:
-            params["file_name"] = file_name
+        # MCSManager requires optional query parameters to be present even when
+        # their value is empty. Omitting file_name causes an empty but successful
+        # list response on some panel/daemon versions.
+        params["file_name"] = file_name or ""
         return await self.request_data("GET", "/api/files/list", params=params)
 
     async def files_status(self, daemon_id: str, instance_uuid: str) -> Any:

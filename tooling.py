@@ -118,6 +118,7 @@ def _tool_specs() -> list[dict[str, Any]]:
                 "涉及检测、安装或切换 Java 版本时，必须优先使用实例内的 javm：先用 `javm current` 查当前版本、`javm ls` 查已安装版本；切换当前终端用 `javm use <版本>`，设置新终端默认版本用 `javm default <版本>`；查询/安装可用 `javm ls-remote` / `javm install`。不要先直接修改 JAVA_HOME 或替换 JDK 文件。"
                 "返回给模型的命令日志总预算默认 8000 字符、最大 12000 字符；超长输出会自动保留头尾摘要并返回 snapshot_id，不会一次返回完整日志。"
                 "如果实例不是运行中（status != 3），工具不会发送命令，而是返回 ok=false、status、status_text、sent=false 和可读提示。"
+                "实例终端只有一个输入通道，不能并行写命令。不要在同一轮同时调用多个 mcsm_send_command；多条命令必须等待前一条返回后串行执行，或合并为一条（例如 cmd1 && cmd2）。"
             ),
             "parameters": _schema(
                 {
@@ -161,11 +162,13 @@ def _tool_specs() -> list[dict[str, Any]]:
         },
         {
             "name": "mcsm_list_files",
-            "description": "分页列出已授权实例目录中的文件和文件夹。",
+            "description": "分页列出已授权实例工作目录中的文件和文件夹。target 是相对实例工作目录的路径：/ 表示工作目录本身，例如 /cy3-3.14.2-linux-server/ 表示其子目录。",
             "parameters": _schema(
                 {
                     "instance": instance,
-                    "target": _string("实例内目录路径，默认 /。"),
+                    "target": _string(
+                        "相对实例工作目录的目录路径，默认 /；/ 表示工作目录本身。"
+                    ),
                     "page": _number("页码，从 0 开始。"),
                     "page_size": _number("每页数量，1-100，默认 50。"),
                     "file_name": _string("可选的文件名过滤关键字。"),
@@ -180,7 +183,7 @@ def _tool_specs() -> list[dict[str, Any]]:
                 {
                     "instance": instance,
                     "target": _string(
-                        "实例内文件的绝对路径，例如 /server.properties。"
+                        "相对实例工作目录的文件路径，例如 /cy3-3.14.2-linux-server/server.properties。"
                     ),
                     "max_chars": _number(
                         "最多返回字符数，默认 20000，范围 500-100000。"
@@ -195,7 +198,7 @@ def _tool_specs() -> list[dict[str, Any]]:
             "parameters": _schema(
                 {
                     "instance": instance,
-                    "target": _string("实例内文件路径。"),
+                    "target": _string("相对实例工作目录的文件路径。"),
                     "text": _string("写入的完整文本内容。"),
                 },
                 ["instance", "target", "text"],
@@ -222,11 +225,17 @@ def _tool_specs() -> list[dict[str, Any]]:
                         ],
                     ),
                     "target": _string(
-                        "单个目标路径（mkdir/touch/chmod/解压目标等使用）。"
+                        "单个目标路径，相对实例工作目录（mkdir/touch/chmod/解压目标等使用）。"
                     ),
-                    "source": _string("源文件路径（copy/move/zip/unzip 使用）。"),
-                    "destination": _string("目标路径（copy/move 使用）。"),
-                    "targets": _array("多个目标路径（delete/zip/chmod 使用）。"),
+                    "source": _string(
+                        "相对实例工作目录的源路径（copy/move/zip/unzip 使用）。"
+                    ),
+                    "destination": _string(
+                        "相对实例工作目录的目标路径（copy/move 使用）。"
+                    ),
+                    "targets": _array(
+                        "多个目标路径，均相对实例工作目录（delete/zip/chmod 使用）。"
+                    ),
                     "chmod": _number("Linux 权限数字，例如 755。"),
                     "deep": _boolean("chmod 是否递归应用到目录。", False),
                     "task_id": _string("要停止的下载任务 ID。"),
@@ -240,7 +249,9 @@ def _tool_specs() -> list[dict[str, Any]]:
             "parameters": _schema(
                 {
                     "instance": instance,
-                    "file_name": _string("实例内文件路径，例如 /logs/latest.log。"),
+                    "file_name": _string(
+                        "相对实例工作目录的文件路径，例如 /cy3-3.14.2-linux-server/logs/latest.log。"
+                    ),
                 },
                 ["instance", "file_name"],
             ),
@@ -251,7 +262,7 @@ def _tool_specs() -> list[dict[str, Any]]:
             "parameters": _schema(
                 {
                     "instance": instance,
-                    "upload_dir": _string("上传目录，默认 /。"),
+                    "upload_dir": _string("相对实例工作目录的上传目录，默认 /。"),
                     "file_name": _string("上传后的文件名。"),
                     "content_base64": _string("文件内容的 Base64 编码。最大 8 MiB。"),
                     "overwrite": _boolean("同名文件是否覆盖，默认 true。", True),
@@ -269,7 +280,9 @@ def _tool_specs() -> list[dict[str, Any]]:
                 {
                     "instance": instance,
                     "url": _string("要下载的 http(s) URL。"),
-                    "file_name": _string("保存到实例内的路径，例如 /backup/file.zip。"),
+                    "file_name": _string(
+                        "相对实例工作目录的保存路径，例如 /cy3-3.14.2-linux-server/backup/file.zip。"
+                    ),
                 },
                 ["instance", "url", "file_name"],
             ),
@@ -286,8 +299,12 @@ def _tool_specs() -> list[dict[str, Any]]:
                 {
                     "instance": instance,
                     "action": _string("操作类型。", enum=["list", "read", "write"]),
-                    "files": _array("action=list 时要检查的文件路径列表。"),
-                    "file_name": _string("action=read/write 时的文件路径。"),
+                    "files": _array(
+                        "action=list 时要检查的文件路径列表，均相对实例工作目录。"
+                    ),
+                    "file_name": _string(
+                        "action=read/write 时相对实例工作目录的文件路径。"
+                    ),
                     "file_type": _string("可选的配置类型提示。"),
                     "content": _object("action=write 时要写入的配置对象。"),
                 },
@@ -314,7 +331,7 @@ def _tool_specs() -> list[dict[str, Any]]:
         },
         {
             "name": "mcsm_api",
-            "description": "MCSManager 原始 API 兜底工具。可调用官方文档中的面板 API；插件会根据路径自动映射到实例权限分类，并拒绝账号/API Key 管理接口。",
+            "description": "MCSManager 原始 API 兜底工具。可调用官方文档中的面板 API；插件会根据路径自动映射到实例权限分类，并拒绝账号/API Key 管理接口。若调用 /api/protected_instance/command，也必须遵守终端单通道规则，不能并行发送。",
             "parameters": _schema(
                 {
                     "instance": _string(

@@ -47,6 +47,12 @@ data/plugins/astrbot_plugin_mcsm/
 
 `mcsm_send_command` 会在发送前检查实例状态。实例不是 `status=3`（运行中）时不会发送命令，而是返回 `ok=false`、`status`、`status_text`、`sent=false` 和启动提示。
 
+实例终端只有一个输入通道，不能并行写命令。插件对同一实例使用异步锁串行执行；LLM 也不应在同一轮并行调用多个 `mcsm_send_command`，多条命令应等待前一条完成，或合并为一条。
+
+实例终端只有一个输入通道，不能并行写命令。插件对同一实例使用异步锁串行执行；LLM 也不应在同一轮并行调用多个 `mcsm_send_command`，多条命令应等待前一条完成，或合并为一条。
+
+所有文件路径均相对实例工作目录；`/` 表示工作目录本身，例如 `/cy3-3.14.2-linux-server/` 表示工作目录下的子目录。
+
 `mcsm_send_command` 不会无限返回控制台内容：
 
 - 默认单次最多返回 8,000 字符；
