@@ -97,6 +97,12 @@ class MCSMPlugin(Star):
                 ["POST"],
                 "解除会话实例绑定",
             ),
+            (
+                "/bindings/reorder",
+                self.page_bindings_reorder,
+                ["POST"],
+                "保存会话实例顺序",
+            ),
             ("/permissions/save", self.page_permissions_save, ["POST"], "保存实例权限"),
         ]
         for suffix, handler, methods, description in routes:
@@ -373,6 +379,30 @@ class MCSMPlugin(Star):
                 {
                     "ok": True,
                     "removed": removed,
+                    "bindings": self._state_store.binding_keys(),
+                }
+            )
+        except ValueError as exc:
+            return error_response(str(exc))
+
+    async def page_bindings_reorder(self):
+        try:
+            payload = await request.json(default={})
+            if not isinstance(payload, dict):
+                payload = {}
+            session_key = str(payload.get("session") or "").strip()
+            ordered_keys = payload.get("ordered_keys")
+            if not session_key or not isinstance(ordered_keys, list):
+                raise ValueError("session 和 ordered_keys 不能为空。")
+            if len(ordered_keys) > 500:
+                raise ValueError("绑定实例数量异常。")
+            normalized = await self._state_store.reorder_bindings(
+                session_key, [str(item) for item in ordered_keys]
+            )
+            return json_response(
+                {
+                    "ok": True,
+                    "ordered_keys": normalized,
                     "bindings": self._state_store.binding_keys(),
                 }
             )

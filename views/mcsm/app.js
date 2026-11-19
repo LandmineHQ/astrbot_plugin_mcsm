@@ -16,6 +16,8 @@ let sessionQuery = '';
 let permissionTargetKey = '';
 let toastTimer = null;
 let firstLoad = true;
+let dragState = null;
+let dropInsertIndex = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -149,10 +151,103 @@ function renderAll() {
   renderSessionDetails();
 }
 
+function clearDragVisuals() {
+  for (const card of document.querySelectorAll(".instance-card")) {
+    card.classList.remove("dragging", "drop-before", "drop-after");
+  }
+  $("boundDropZone")?.classList.remove("drag-over");
+  $("instancePanel")?.classList.remove("unbind-target");
+  dropInsertIndex = null;
+}
+
+function instanceCardMarkup(instance, location) {
+  const st = statusClass(instance.status);
+  const labels = enabledPermissionLabels(instance.permissions);
+  const badges = labels.slice(0, 4).map((label) => `<span class="mini-badge">${escapeHtml(label)}</span>`).join("");
+  return `
+    <article class="instance-card" draggable="true" data-instance-key="${escapeHtml(instance.key)}" data-card-location="${location}">
+      <div class="instance-avatar" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="4" width="16" height="6" rx="2" stroke="currentColor" stroke-width="1.6"/>
+          <rect x="4" y="14" width="16" height="6" rx="2" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M7.5 7h.01M7.5 17h.01" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <span class="status-dot ${st}"></span>
+      </div>
+      <div class="instance-copy">
+        <div class="instance-title-row">
+          <span class="instance-title">${escapeHtml(instance.nickname)}</span>
+          <span class="status-label ${st}">${escapeHtml(instance.status_text)}</span>
+        </div>
+        <div class="instance-sub">${escapeHtml(instance.instanceUuid)}</div>
+        <div class="permission-badges">${badges || '<span class="mini-badge">无权限</span>'}</div>
+      </div>
+      <div class="instance-actions">
+        <button class="card-settings-button" type="button" draggable="false" title="设置权限" aria-label="设置 ${escapeHtml(instance.nickname)} 的权限" data-permission-key="${escapeHtml(instance.key)}">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M19.2 13.6a7.9 7.9 0 0 0 .05-1.6 7.9 7.9 0 0 0-.05-1.6l2-1.6-2-3.4-2.4 1a8 8 0 0 0-2.8-1.7L13.7 2h-4l-.3 2.7A8 8 0 0 0 6.6 6.4l-2.4-1-2 3.4 2 1.6A7.9 7.9 0 0 0 4.1 12a7.9 7.9 0 0 0 .05 1.6l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 2.8 1.7l.3 2.7h4l.3-2.7a8 8 0 0 0 2.8-1.7l2.4 1 2-3.4-2-1.6Z" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </article>`;
+}
+
+function staleCardMarkup(key, location) {
+  return `
+    <article class="instance-card" draggable="true" data-instance-key="${escapeHtml(key)}" data-card-location="${location}">
+      <div class="instance-avatar" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 8v4m0 4h.01M4 20h16L12 4 4 20Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="status-dot stopped"></span>
+      </div>
+      <div class="instance-copy">
+        <div class="instance-title-row">
+          <span class="instance-title">实例不可用</span>
+          <span class="status-label stopped">已失效</span>
+        </div>
+        <div class="instance-sub">${escapeHtml(key)}</div>
+        <div class="permission-badges"><span class="mini-badge">当前 API Key 无权访问</span></div>
+      </div>
+      <div class="instance-actions"></div>
+    </article>`;
+}
+
+function bindInstanceCardEvents(container) {
+  for (const card of container.querySelectorAll(".instance-card")) {
+    card.addEventListener("dragstart", (event) => {
+      if (event.target.closest("button")) {
+        event.preventDefault();
+        return;
+      }
+      dragState = {
+        key: card.dataset.instanceKey,
+        location: card.dataset.cardLocation,
+        session: selectedSessionUmo,
+      };
+      card.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.dataset.instanceKey);
+      event.dataTransfer.setData("application/x-mcsm-instance", card.dataset.instanceKey);
+    });
+    card.addEventListener("dragend", () => {
+      clearDragVisuals();
+      dragState = null;
+    });
+  }
+  for (const button of container.querySelectorAll("[data-permission-key]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openPermissionModal(button.dataset.permissionKey);
+    });
+  }
+}
+
 function renderInstances() {
   const list = $("instanceList");
-  $("instanceCount").textContent = String(state.instances.length);
   if (!state.settings.configured) {
+    $("instanceCount").textContent = "0";
     list.innerHTML = `
       <div class="empty-state">
         <div><strong>尚未连接 MCSManager</strong><p>请先到「设置」页填写 Base URL 与 API Key。</p></div>
@@ -160,6 +255,7 @@ function renderInstances() {
     return;
   }
   if (state.apiError) {
+    $("instanceCount").textContent = "0";
     list.innerHTML = `
       <div class="empty-state">
         <div><strong>实例读取失败</strong><p>${escapeHtml(state.apiError)}</p></div>
@@ -167,6 +263,7 @@ function renderInstances() {
     return;
   }
   if (!state.instances.length) {
+    $("instanceCount").textContent = "0";
     list.innerHTML = `
       <div class="empty-state">
         <div><strong>没有可操作实例</strong><p>当前 API Key 对应的 MCSManager 账号没有分配实例。</p></div>
@@ -174,56 +271,19 @@ function renderInstances() {
     return;
   }
 
-  const boundKeys = boundKeysForSession(selectedSession());
-  list.innerHTML = state.instances.map((instance) => {
-    const st = statusClass(instance.status);
-    const labels = enabledPermissionLabels(instance.permissions);
-    const bound = boundKeys.includes(instance.key);
-    const badges = labels.slice(0, 4).map((label) => `<span class="mini-badge">${escapeHtml(label)}</span>`).join("");
-    return `
-      <article class="instance-card ${bound ? "bound" : ""}" draggable="true" data-instance-key="${escapeHtml(instance.key)}">
-        <div class="instance-avatar" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <rect x="4" y="4" width="16" height="6" rx="2" stroke="currentColor" stroke-width="1.6"/>
-            <rect x="4" y="14" width="16" height="6" rx="2" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M7.5 7h.01M7.5 17h.01" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-          </svg>
-          <span class="status-dot ${st}"></span>
-        </div>
-        <div class="instance-copy">
-          <div class="instance-title-row">
-            <span class="instance-title">${escapeHtml(instance.nickname)}</span>
-            <span class="status-label ${st}">${escapeHtml(instance.status_text)}</span>
-          </div>
-          <div class="instance-sub">${escapeHtml(instance.instanceUuid)}</div>
-          <div class="permission-badges">${badges || '<span class="mini-badge">无权限</span>'}</div>
-        </div>
-        <div class="instance-actions">
-          <button class="card-settings-button" type="button" title="设置权限" aria-label="设置 ${escapeHtml(instance.nickname)} 的权限" data-permission-key="${escapeHtml(instance.key)}">
-            <svg viewBox="0 0 24 24" fill="none">
-              <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z" stroke="currentColor" stroke-width="1.6"/>
-              <path d="M19.2 13.6a7.9 7.9 0 0 0 .05-1.6 7.9 7.9 0 0 0-.05-1.6l2-1.6-2-3.4-2.4 1a8 8 0 0 0-2.8-1.7L13.7 2h-4l-.3 2.7A8 8 0 0 0 6.6 6.4l-2.4-1-2 3.4 2 1.6A7.9 7.9 0 0 0 4.1 12a7.9 7.9 0 0 0 .05 1.6l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 2.8 1.7l.3 2.7h4l.3-2.7a8 8 0 0 0 2.8-1.7l2.4 1 2-3.4-2-1.6Z" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>
-            </svg>
-          </button>
-        </div>
-      </article>`;
-  }).join("");
-
-  for (const card of list.querySelectorAll(".instance-card")) {
-    card.addEventListener("dragstart", (event) => {
-      card.classList.add("dragging");
-      event.dataTransfer.effectAllowed = "copy";
-      event.dataTransfer.setData("text/plain", card.dataset.instanceKey);
-      event.dataTransfer.setData("application/x-mcsm-instance", card.dataset.instanceKey);
-    });
-    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+  const session = selectedSession();
+  const boundSet = new Set(session ? boundKeysForSession(session) : []);
+  const unbound = state.instances.filter((instance) => !boundSet.has(instance.key));
+  $("instanceCount").textContent = String(unbound.length);
+  if (!unbound.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div><strong>没有未授权实例</strong><p>当前 SID 已授权全部实例，或右侧实例需要重新授权。</p></div>
+      </div>`;
+    return;
   }
-  for (const button of list.querySelectorAll("[data-permission-key]")) {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openPermissionModal(button.dataset.permissionKey);
-    });
-  }
+  list.innerHTML = unbound.map((instance) => instanceCardMarkup(instance, "left")).join("");
+  bindInstanceCardEvents(list);
 }
 
 function renderSessionSelector() {
@@ -275,58 +335,69 @@ function renderSessionSelector() {
 function renderSessionDetails() {
   const session = selectedSession();
   const meta = $("sessionMeta");
-  const dropZone = $("dropZone");
+  const boundDropZone = $("boundDropZone");
   const boundList = $("boundList");
   if (!session) {
     meta.className = "session-meta empty";
     meta.textContent = state.sessions.length ? "尚未选择会话" : "没有可用于绑定的群会话，请先给机器人发送 /sid。";
-    dropZone.classList.add("disabled");
+    boundDropZone.classList.add("disabled");
     $("boundCount").textContent = "0";
-    boundList.innerHTML = '<div class="bound-empty">选择会话后可查看已授权实例。</div>';
+    boundList.innerHTML = '<div class="empty-state"><div><strong>选择会话</strong><p>选择 SID 后可查看并排序已授权实例。</p></div></div>';
     return;
   }
   meta.className = "session-meta";
   meta.innerHTML = `<span><strong>${escapeHtml(session.display_name || session.session_id)}</strong> · <code>${escapeHtml(session.umo)}</code>${session.whitelisted ? " · 白名单会话" : ""}</span>`;
-  dropZone.classList.remove("disabled");
+  boundDropZone.classList.remove("disabled");
 
   const bound = boundKeysForSession(session);
   $("boundCount").textContent = String(bound.length);
   if (!bound.length) {
-    boundList.innerHTML = '<div class="bound-empty">尚未授权实例。将左侧卡片拖入激活区域。</div>';
+    boundList.innerHTML = '<div class="empty-state"><div><strong>拖入实例</strong><p>从左侧拖动卡片到此处完成授权。</p></div></div>';
     return;
   }
   boundList.innerHTML = bound.map((key) => {
     const instance = instanceByKey(key);
-    if (!instance) {
-      return `
-        <div class="bound-item">
-          <div class="bound-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v4m0 4h.01M4 20h16L12 4 4 20Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div><div class="bound-name">实例不可用</div><div class="bound-detail">${escapeHtml(key)}</div></div>
-          <button class="remove-binding" type="button" data-remove-binding="${escapeHtml(key)}" title="解除绑定"><svg viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
-        </div>`;
-    }
-    const labels = enabledPermissionLabels(instance.permissions);
-    return `
-      <div class="bound-item">
-        <div class="bound-icon"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.2 4.2L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div>
-          <div class="bound-name">${escapeHtml(instance.nickname)}</div>
-          <div class="bound-detail">${escapeHtml(instance.status_text)} · ${escapeHtml(labels.join("、") || "无权限")}</div>
-        </div>
-        <button class="remove-binding" type="button" data-remove-binding="${escapeHtml(key)}" title="解除绑定">
-          <svg viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </button>
-      </div>`;
+    return instance ? instanceCardMarkup(instance, "right") : staleCardMarkup(key, "right");
   }).join("");
-
-  for (const button of boundList.querySelectorAll("[data-remove-binding]")) {
-    button.addEventListener("click", async () => {
-      await removeBinding(button.dataset.removeBinding);
-    });
-  }
+  bindInstanceCardEvents(boundList);
 }
 
-async function bindInstance(instanceKey) {
+function insertionIndexFromEvent(event) {
+  const cards = [...$("boundList").querySelectorAll(".instance-card")];
+  for (const card of cards) {
+    card.classList.remove("drop-before", "drop-after");
+  }
+  let index = cards.length;
+  const targetCard = event.target.closest(".instance-card");
+  if (targetCard && $("boundList").contains(targetCard)) {
+    const targetIndex = cards.indexOf(targetCard);
+    const rect = targetCard.getBoundingClientRect();
+    const after = event.clientY > rect.top + rect.height / 2;
+    index = targetIndex + (after ? 1 : 0);
+    targetCard.classList.add(after ? "drop-after" : "drop-before");
+  }
+  return index;
+}
+
+function orderedWithoutKey(keys, key, insertionIndex) {
+  const currentIndex = keys.indexOf(key);
+  const without = keys.filter((item) => item !== key);
+  let index = Number.isFinite(insertionIndex) ? insertionIndex : without.length;
+  if (currentIndex >= 0 && currentIndex < insertionIndex) index -= 1;
+  index = Math.max(0, Math.min(index, without.length));
+  without.splice(index, 0, key);
+  return without;
+}
+
+async function persistBindingOrder(session, keys) {
+  const result = await apiPost("bindings/reorder", {
+    session: session.umo,
+    ordered_keys: keys,
+  });
+  state.bindings = result.bindings || state.bindings;
+}
+
+async function bindInstance(instanceKey, insertIndex = null) {
   const session = selectedSession();
   if (!session) {
     showToast("请先选择会话", "error");
@@ -338,8 +409,27 @@ async function bindInstance(instanceKey) {
       instance_key: instanceKey,
     });
     state.bindings = result.bindings || state.bindings;
+    if (result.added && insertIndex !== null) {
+      const ordered = orderedWithoutKey(boundKeysForSession(session), instanceKey, insertIndex);
+      await persistBindingOrder(session, ordered);
+    }
     const instance = instanceByKey(instanceKey);
     showToast(result.added ? `已授权「${instance?.nickname || instanceKey}」` : "该实例已授权");
+    renderAll();
+  } catch (error) {
+    showToast(errorMessage(error), "error");
+  }
+}
+
+async function reorderBinding(instanceKey, insertIndex) {
+  const session = selectedSession();
+  if (!session) return;
+  try {
+    const current = boundKeysForSession(session);
+    const ordered = orderedWithoutKey(current, instanceKey, insertIndex);
+    if (ordered.every((key, index) => key === current[index])) return;
+    await persistBindingOrder(session, ordered);
+    showToast("实例顺序已保存");
     renderAll();
   } catch (error) {
     showToast(errorMessage(error), "error");
@@ -355,7 +445,7 @@ async function removeBinding(instanceKey) {
       instance_key: instanceKey,
     });
     state.bindings = result.bindings || state.bindings;
-    showToast("已解除授权");
+    showToast("已拖回左侧并解除授权");
     renderAll();
   } catch (error) {
     showToast(errorMessage(error), "error");
@@ -578,28 +668,58 @@ function wireEvents() {
       closePermissionModal();
     }
   });
-  const dropZone = $("dropZone");
-  for (const eventName of ["dragenter", "dragover"]) {
-    dropZone.addEventListener(eventName, (event) => {
-      if (dropZone.classList.contains("disabled")) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "copy";
-      dropZone.classList.add("drag-over");
-    });
-  }
-  for (const eventName of ["dragleave", "dragend"]) {
-    dropZone.addEventListener(eventName, () => dropZone.classList.remove("drag-over"));
-  }
-  dropZone.addEventListener("drop", async (event) => {
+  const boundDropZone = $("boundDropZone");
+  const instancePanel = $("instancePanel");
+
+  boundDropZone.addEventListener("dragover", (event) => {
+    if (!dragState || !selectedSession()) return;
     event.preventDefault();
-    dropZone.classList.remove("drag-over");
-    if (dropZone.classList.contains("disabled")) {
-      showToast("请先选择会话", "error");
-      return;
-    }
-    const key = event.dataTransfer.getData("application/x-mcsm-instance") || event.dataTransfer.getData("text/plain");
-    if (key) await bindInstance(key);
+    event.dataTransfer.dropEffect = "move";
+    boundDropZone.classList.add("drag-over");
+    dropInsertIndex = insertionIndexFromEvent(event);
   });
+  boundDropZone.addEventListener("dragleave", (event) => {
+    if (boundDropZone.contains(event.relatedTarget)) return;
+    boundDropZone.classList.remove("drag-over");
+    for (const card of $("boundList").querySelectorAll(".instance-card")) {
+      card.classList.remove("drop-before", "drop-after");
+    }
+    dropInsertIndex = null;
+  });
+  boundDropZone.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    const operation = dragState;
+    const insertIndex = dropInsertIndex;
+    boundDropZone.classList.remove("drag-over");
+    if (!operation || !selectedSession()) return;
+    clearDragVisuals();
+    dragState = null;
+    if (operation.location === "left") {
+      await bindInstance(operation.key, insertIndex);
+    } else if (operation.location === "right") {
+      await reorderBinding(operation.key, insertIndex);
+    }
+  });
+
+  instancePanel.addEventListener("dragover", (event) => {
+    if (!dragState || dragState.location !== "right") return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    instancePanel.classList.add("unbind-target");
+  });
+  instancePanel.addEventListener("dragleave", (event) => {
+    if (instancePanel.contains(event.relatedTarget)) return;
+    instancePanel.classList.remove("unbind-target");
+  });
+  instancePanel.addEventListener("drop", async (event) => {
+    if (!dragState || dragState.location !== "right") return;
+    event.preventDefault();
+    const key = dragState.key;
+    clearDragVisuals();
+    dragState = null;
+    await removeBinding(key);
+  });
+
 }
 
 async function main() {

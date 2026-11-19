@@ -159,6 +159,29 @@ class PluginStateStore:
             await self._save_unlocked()
             return True
 
+    async def reorder_bindings(
+        self, session_key: str, ordered_keys: list[str]
+    ) -> list[str]:
+        session_key = str(session_key or "").strip()
+        if not session_key:
+            raise ValueError("会话不能为空。")
+        async with self._lock:
+            existing = self._state["bindings"].get(session_key, [])
+            if not existing:
+                return []
+            existing_set = set(existing)
+            normalized: list[str] = []
+            for value in ordered_keys:
+                key = str(value or "").strip()
+                if key in existing_set and key not in normalized:
+                    normalized.append(key)
+            for key in existing:
+                if key not in normalized:
+                    normalized.append(key)
+            self._state["bindings"][session_key] = normalized
+            await self._save_unlocked()
+            return list(normalized)
+
     async def unbind(self, session_key: str, instance_key: str) -> bool:
         session_key = str(session_key or "").strip()
         instance_key = str(instance_key or "").strip()

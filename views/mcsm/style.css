@@ -762,3 +762,71 @@ input:focus { border-color: var(--accent-border); outline: 2px solid var(--accen
   .drop-zone { align-items: flex-start; }
   .toast { right: 12px; bottom: 12px; }
 }
+/* Dual-list transfer + sortable bound list */
+.bound-drop-zone {
+  min-height: 126px;
+  padding: 10px;
+  border: 1.5px dashed var(--accent-border);
+  border-radius: 15px;
+  background:
+    linear-gradient(135deg, var(--accent-soft), transparent 55%),
+    var(--bg-soft);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.bound-drop-zone:not(.disabled).drag-over {
+  border-color: var(--accent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 170%, transparent), transparent 65%),
+    var(--bg-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+.bound-drop-zone.disabled { opacity: 0.55; border-color: var(--border-strong); }
+.bound-drop-zone .bound-list { min-height: 104px; }
+.bound-drop-zone .empty-state { min-height: 104px; background: transparent; }
+.instances-panel.unbind-target {
+  border-color: color-mix(in srgb, var(--red) 42%, var(--border));
+  box-shadow: 0 0 0 2px var(--red-soft), var(--shadow);
+}
+.instances-panel.unbind-target .instance-list::before {
+  content: "放到这里解除当前 SID 的授权";
+  display: block;
+  padding: 9px;
+  border: 1px dashed color-mix(in srgb, var(--red) 38%, transparent);
+  border-radius: 10px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+}
+.activation-heading > div { min-width: 0; }
+.activation-subtitle {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: 9.5px;
+  font-weight: 500;
+}
+.drag-help {
+  margin: 9px 2px 0;
+  color: var(--text-faint);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+.instance-card.drop-before::before,
+.instance-card.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  pointer-events: none;
+}
+.instance-card.drop-before::before { top: -7px; }
+.instance-card.drop-after::after { bottom: -7px; }
+.instance-card button { cursor: pointer; }
+.bound-list .instance-card { cursor: grab; }
+.bound-list .instance-card:active { cursor: grabbing; }

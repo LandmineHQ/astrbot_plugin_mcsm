@@ -47,15 +47,15 @@
       <main>
         <section id="blueprintPanel" class="tab-panel active">
           <div class="blueprint-grid">
-            <section class="panel instances-panel">
+            <section id="instancePanel" class="panel instances-panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">AVAILABLE INSTANCES</p>
-                  <h2>可操作实例</h2>
+                  <p class="eyebrow">UNBOUND INSTANCES</p>
+                  <h2>未授权实例</h2>
                 </div>
                 <span id="instanceCount" class="counter">0</span>
               </div>
-              <p class="panel-desc">拖动实例到右侧激活区域即可授权给当前会话。点击齿轮调整该实例允许机器人执行的能力。</p>
+              <p class="panel-desc">这里只显示当前 SID 尚未授权的实例。把卡片拖到右侧即可授权；右侧卡片拖回此区域即可解除授权。</p>
               <div id="instanceList" class="instance-list" aria-live="polite"></div>
             </section>
 
@@ -92,24 +92,17 @@
 
               <div id="sessionMeta" class="session-meta empty">尚未选择会话</div>
 
-              <div id="dropZone" class="drop-zone disabled" tabindex="0" role="button" aria-label="实例激活区域">
-                <div class="drop-visual" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none">
-                    <path d="M12 4v11m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M5 17.5V20h14v-2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                  </svg>
-                </div>
-                <div>
-                  <h3>激活区域</h3>
-                  <p>将左侧实例拖到这里，授权给当前所选会话。</p>
-                </div>
-              </div>
-
               <div class="activation-heading">
-                <h3>已授权实例</h3>
+                <div>
+                  <h3>已授权实例</h3>
+                  <span class="activation-subtitle">拖入授权 · 拖回解除 · 上下拖动排序</span>
+                </div>
                 <span id="boundCount" class="counter subtle">0</span>
               </div>
-              <div id="boundList" class="bound-list" aria-live="polite"></div>
+              <div id="boundDropZone" class="bound-drop-zone disabled" tabindex="0" aria-label="已授权实例拖放排序区域">
+                <div id="boundList" class="instance-list bound-list" aria-live="polite"></div>
+              </div>
+              <p class="drag-help">同一 SID 中，每个实例只会在左侧或右侧出现一次。右侧顺序会自动保存。</p>
             </section>
           </div>
         </section>
