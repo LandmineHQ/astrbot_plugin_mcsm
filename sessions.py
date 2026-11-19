@@ -4,7 +4,12 @@ from typing import Any
 
 from sqlmodel import col, func, select
 
-from astrbot.core.db.po import ConversationV2, UmoAlias, UmoSender
+from astrbot.core.db.po import ConversationV2, UmoAlias
+
+try:
+    from astrbot.core.db.po import UmoSender
+except ImportError:  # AstrBot < 4.29.4 does not have UMO sender records.
+    UmoSender = None
 
 try:
     from .state_store import PluginStateStore
@@ -35,17 +40,13 @@ def is_private_umo(umo: str) -> bool:
 
 async def _known_umos_from_db(context: Any) -> list[str]:
     db = context.get_db()
-    sources = (
-        select(
-            col(ConversationV2.user_id).label("umo"),
-            col(ConversationV2.updated_at).label("updated_at"),
-        )
-        .union_all(
-            select(UmoSender.umo, UmoSender.updated_at),
-            select(UmoAlias.umo, UmoAlias.updated_at),
-        )
-        .subquery()
-    )
+    selection = select(
+        col(ConversationV2.user_id).label("umo"),
+        col(ConversationV2.updated_at).label("updated_at"),
+    ).union_all(select(UmoAlias.umo, UmoAlias.updated_at))
+    if UmoSender is not None:
+        selection = selection.union_all(select(UmoSender.umo, UmoSender.updated_at))
+    sources = selection.subquery()
     async with db.get_db() as session:
         result = await session.execute(
             select(sources.c.umo)

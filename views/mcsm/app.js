@@ -6,6 +6,7 @@ const state = {
   account: {},
   sessions: [],
   bindings: {},
+  bindingPermissions: {},
   permissionDefinitions: [],
   defaultPermissions: {},
   apiError: '',
@@ -14,6 +15,7 @@ const state = {
 let selectedSessionUmo = '';
 let sessionQuery = '';
 let permissionTargetKey = '';
+let permissionTargetSessionUmo = '';
 let toastTimer = null;
 let firstLoad = true;
 let dragState = null;
@@ -126,6 +128,16 @@ function statusClass(status) {
   }[String(status)] || "stopped";
 }
 
+function permissionsForSession(session, instanceKey) {
+  const defaults = { ...(state.defaultPermissions || {}) };
+  if (!session) return defaults;
+  for (const sessionKey of sessionKeys(session)) {
+    const stored = state.bindingPermissions?.[sessionKey]?.[instanceKey];
+    if (stored) return { ...defaults, ...stored };
+  }
+  return defaults;
+}
+
 function enabledPermissionLabels(permissions) {
   return state.permissionDefinitions
     .filter((item) => permissions?.[item.key])
@@ -162,7 +174,8 @@ function clearDragVisuals() {
 
 function instanceCardMarkup(instance, location) {
   const st = statusClass(instance.status);
-  const labels = enabledPermissionLabels(instance.permissions);
+  const permissions = permissionsForSession(selectedSession(), instance.key);
+  const labels = enabledPermissionLabels(permissions);
   const badges = labels.slice(0, 4).map((label) => `<span class="mini-badge">${escapeHtml(label)}</span>`).join("");
   return `
     <article class="instance-card" draggable="true" data-instance-key="${escapeHtml(instance.key)}" data-card-location="${location}">
@@ -454,11 +467,18 @@ async function removeBinding(instanceKey) {
 
 function openPermissionModal(instanceKey) {
   const instance = instanceByKey(instanceKey);
+  const session = selectedSession();
   if (!instance) return;
+  if (!session) {
+    showToast("请先选择 SID，再设置该 SID 的实例权限", "error");
+    return;
+  }
   permissionTargetKey = instanceKey;
-  $("permissionSubtitle").textContent = `${instance.nickname} · ${instance.instanceUuid}`;
+  permissionTargetSessionUmo = session.umo;
+  const permissions = permissionsForSession(session, instanceKey);
+  $("permissionSubtitle").textContent = `${session.display_name || session.umo} · ${instance.nickname}`;
   $("permissionList").innerHTML = state.permissionDefinitions.map((item) => {
-    const checked = Boolean(instance.permissions?.[item.key] ?? state.defaultPermissions?.[item.key]);
+    const checked = Boolean(permissions[item.key]);
     return `
       <label class="permission-row ${item.key === "admin" ? "danger" : ""}">
         <span><strong>${escapeHtml(item.label)}</strong><p>${escapeHtml(item.description)}</p></span>
@@ -471,10 +491,16 @@ function openPermissionModal(instanceKey) {
 function closePermissionModal() {
   $("permissionModal").classList.add("hidden");
   permissionTargetKey = "";
+  permissionTargetSessionUmo = "";
 }
 
 async function savePermissions() {
-  if (!permissionTargetKey) return;
+  if (!permissionTargetKey || !permissionTargetSessionUmo) return;
+  const session = state.sessions.find((item) => item.umo === permissionTargetSessionUmo);
+  if (!session) {
+    showToast("当前 SID 已失效，请重新选择", "error");
+    return;
+  }
   const permissions = {};
   for (const input of $("permissionList").querySelectorAll("[data-permission]")) {
     permissions[input.dataset.permission] = input.checked;
@@ -483,12 +509,13 @@ async function savePermissions() {
   button.disabled = true;
   try {
     const result = await apiPost("permissions/save", {
+      session: session.umo,
       instance_key: permissionTargetKey,
       permissions,
     });
-    const instance = instanceByKey(permissionTargetKey);
-    if (instance) instance.permissions = result.permissions;
-    showToast("实例权限已保存");
+    if (!state.bindingPermissions[session.umo]) state.bindingPermissions[session.umo] = {};
+    state.bindingPermissions[session.umo][permissionTargetKey] = result.permissions;
+    showToast("当前 SID 的实例权限已保存");
     closePermissionModal();
     renderAll();
   } catch (error) {
@@ -585,6 +612,7 @@ async function loadData(showSkeleton = true) {
     state.account = data.account || {};
     state.sessions = data.sessions || [];
     state.bindings = data.bindings || {};
+    state.bindingPermissions = data.binding_permissions || {};
     state.permissionDefinitions = data.permission_definitions || [];
     state.defaultPermissions = data.default_permissions || {};
     state.apiError = data.api_error || "";

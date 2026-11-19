@@ -4,9 +4,20 @@
 
 - 自动发现当前 API Key 可操作的实例；
 - 在 WebUI「蓝图」页把实例授权给具体群会话 / SID；
-- 为单个实例设置机器人可用的能力；
+- 为每个 SID 与实例的组合独立设置机器人能力；
 - 通过 LLM Tools 操作实例：状态、控制台、命令、启停、文件管理、上传下载、进程配置和异步任务；
 - 提供通用 MCSManager API 兜底工具。
+
+## AstrBot 兼容性
+
+最低支持 AstrBot `4.29.0`。主要依据：
+
+- `views/` 插件可视化目录与 `views.*` 国际化键从 `4.29.0` 开始支持；`4.28.1` 只扫描 `pages/`。
+- `context.register_web_api()`、插件 Web API 与 Plugin View bridge 从 `4.24.2` 开始提供。
+- `context.add_llm_tools()` 从 `4.5.1` 开始提供。
+- `filter.on_llm_request()` 在 `4.14.3` 前存在兼容问题，`4.14.3` 起修复。
+- 会话发现使用 `ConversationV2`、`UmoAlias` 和 `get_umo_aliases()`，这些 API 在 `4.29.0` 已存在。
+- `UmoSender` 仅在 `4.29.4` 及以后存在，因此插件将其作为可选增强；在 `4.29.0` 中仍可通过会话、别名和白名单发现 SID。
 
 ## 安装
 
@@ -71,7 +82,8 @@ data/plugins/astrbot_plugin_mcsm/
 - 从左侧拖到右侧即完成授权，卡片会从左侧消失并保持相同状态与权限设置按钮；
 - 右侧卡片拖回左侧即解除授权；
 - 右侧卡片可以上下拖动调整顺序；
-- 每个 SID 的绑定顺序保存在 `bindings` 配置数组中，目前仅用于客户端展示，不影响工具执行。
+- 每个 SID 的绑定顺序保存在 `bindings` 配置数组中，目前仅用于客户端展示，不影响工具执行；
+- 权限保存在 `binding_permissions[sid][instance_key]`，同一实例在不同 SID 可以拥有不同权限。
 
 ## 蓝图授权
 
@@ -98,7 +110,7 @@ data/plugins/astrbot_plugin_mcsm/
 - 写入文件
 - 高级管理
 
-管理员可以在蓝图页按实例调整。
+管理员可以在蓝图页针对当前 SID 和实例的组合调整。
 
 ## Tools
 
@@ -128,8 +140,8 @@ data/plugins/astrbot_plugin_mcsm/
 
 - API Key 只保存在插件配置中，不会回显到 WebUI；设置页仅显示掩码。
 - 插件通过 AstrBot 的插件 Web API bridge 访问后端，不把 Dashboard Cookie 暴露给 iframe。
-- 工具调用会同时校验：当前会话和实例是否绑定、实例是否仍在当前 API Key 权限内、实例权限是否开启。
-- 通用 API 工具不会越过实例权限分类；`admin` 权限需要显式开启。
+- 工具调用会同时校验：当前会话和实例是否绑定、实例是否仍在当前 API Key 权限内、当前 SID 对该实例的权限是否开启。
+- 通用 API 工具不会越过当前 SID 的实例权限分类；`admin` 权限需要针对该 SID 显式开启。
 
 ## 参考
 

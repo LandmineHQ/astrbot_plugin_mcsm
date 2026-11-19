@@ -188,7 +188,6 @@ class MCSMPlugin(Star):
                     "maxDownloadFromUrlFileCount", 0
                 ),
             },
-            "permissions": self._state_store.permissions_for(key),
         }
 
     async def _fetch_dashboard(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -232,6 +231,7 @@ class MCSMPlugin(Star):
                 "account": account,
                 "sessions": sessions,
                 "bindings": self._state_store.binding_keys(),
+                "binding_permissions": self._state_store.binding_permissions(),
                 "permission_definitions": PERMISSION_DEFINITIONS,
                 "default_permissions": DEFAULT_PERMISSIONS,
                 "api_error": api_error,
@@ -414,13 +414,23 @@ class MCSMPlugin(Star):
             payload = await request.json(default={})
             if not isinstance(payload, dict):
                 payload = {}
+            session_key = str(payload.get("session") or "").strip()
             key = str(payload.get("instance_key") or "").strip()
             values = payload.get("permissions")
-            if not key or not isinstance(values, dict):
-                raise ValueError("实例 key 与权限对象不能为空。")
+            if not session_key or not key or not isinstance(values, dict):
+                raise ValueError("session、实例 key 与权限对象不能为空。")
             await self._validate_instance_key(key)
-            permissions = await self._state_store.set_permissions(key, values)
-            return json_response({"ok": True, "permissions": permissions})
+            permissions = await self._state_store.set_permissions(
+                session_key, key, values
+            )
+            return json_response(
+                {
+                    "ok": True,
+                    "session": session_key,
+                    "instance_key": key,
+                    "permissions": permissions,
+                }
+            )
         except (MCSMError, ValueError) as exc:
             return error_response(str(exc))
 
@@ -518,7 +528,9 @@ class MCSMPlugin(Star):
             raise MCSMAccessError("实例不存在或未授权给当前会话。")
 
         key = instance_key(selected)
-        permissions = self._state_store.permissions_for(key)
+        permissions = self._state_store.permissions_for_any(
+            self._session_keys(event), key
+        )
         if permission and not permissions.get(permission, False):
             raise MCSMAccessError(
                 f"实例「{selected.get('nickname') or key}」未启用「{self._permission_label(permission)}」权限。"
@@ -576,7 +588,9 @@ class MCSMPlugin(Star):
             item = by_key.get(key)
             if item is None:
                 continue
-            permissions = self._state_store.permissions_for(key)
+            permissions = self._state_store.permissions_for_any(
+                self._session_keys(event), key
+            )
             if permissions.get(permission, False):
                 return item, key
         raise MCSMAccessError(
@@ -685,9 +699,13 @@ class MCSMPlugin(Star):
             return [self._redact_sensitive(item) for item in value]
         return value
 
-    def _instance_public_with_permissions(self, item: dict[str, Any]) -> dict[str, Any]:
+    def _instance_public_with_permissions(
+        self, item: dict[str, Any], event: AstrMessageEvent
+    ) -> dict[str, Any]:
         public = self._public_instance(item)
-        public["permissions"] = self._state_store.permissions_for(public["key"])
+        public["permissions"] = self._state_store.permissions_for_any(
+            self._session_keys(event), public["key"]
+        )
         return public
 
     async def _tool_list_instances(self, event: AstrMessageEvent, **_: Any) -> Any:
@@ -695,7 +713,7 @@ class MCSMPlugin(Star):
         instances = await self._client.list_instances()
         by_key = {instance_key(item): item for item in instances}
         bound_instances = [
-            self._instance_public_with_permissions(by_key[key])
+            self._instance_public_with_permissions(by_key[key], event)
             for key in bound_keys
             if key in by_key
         ]
@@ -716,7 +734,7 @@ class MCSMPlugin(Star):
         self, event: AstrMessageEvent, instance: str = "", **_: Any
     ) -> Any:
         selected, key = await self._resolve_instance(event, instance, "view")
-        public = self._instance_public_with_permissions(selected)
+        public = self._instance_public_with_permissions(selected, event)
         detail: Any = None
         detail_error = ""
         try:
@@ -1519,7 +1537,9 @@ class MCSMPlugin(Star):
                     lines.append(f"- {key}（已失效）")
                     continue
                 status = self._public_instance(item)["status_text"]
-                permissions = self._state_store.permissions_for(key)
+                permissions = self._state_store.permissions_for_any(
+                    self._session_keys(event), key
+                )
                 enabled = [
                     item_def["label"]
                     for item_def in PERMISSION_DEFINITIONS
